@@ -3,9 +3,12 @@ let path;
 let outerPaths = [];
 let innerPaths = [];
 let paths = [];
-let char = '点';
+let char = '天体観測';
 let isSetup = false;
 let parts = [];
+
+let e = new p5.Ease();
+let eX;
 
 
 // フォントをPromiseでロード
@@ -35,13 +38,11 @@ function preload() {
 }
 
 function setup() {
-	createCanvas(400, 400);
-	background(123);
-	frameRate(2);
+	frameRate(24);
 	if(!isSetup){
 		// フォントからパスを取得
 		if (font) {
-			path = font.getPath(char, 50, 300, 200); // 文字のパスデータを取得
+			path = font.getPath(char, 200, 400, 200); // 文字のパスデータを取得
 			console.log(path);
 			let currentPath={};
 	
@@ -128,8 +129,17 @@ function setup() {
 }
 
 function draw() {
+	createCanvas(1600, 1600);
+	background(123);
 	if(isSetup){
-		drawPaths(parts[frameCount%parts.length]);
+		let offsetP = [0,0];//
+		let offsetS = [1,1];//スケールのオフセット
+		let offsetR = [0,0,5];//回転のオフセット
+
+		for(let i =0; i<parts.length; i++){
+			transformPaths(parts[i],offsetP,offsetS,offsetR);
+			drawPaths(parts[i]);
+		}
 	}
 }
 
@@ -211,6 +221,7 @@ function calcMinDistanceToPolygon(vertex, polygon) {
     return minDistance;
 }
 
+//パスの描画関数
 function drawPaths(paths){
 	beginShape();
 	// console.log(paths);
@@ -249,6 +260,141 @@ function drawPaths(paths){
 		}
 	}
 	endShape(CLOSE);
+}
+
+
+function transformPaths(pathsData, offset = [0, 0], scale = [1, 1], rotation = [0, 0, 0]) {
+    const [offsetX, offsetY] = offset;
+    const [scaleX, scaleY] = scale;
+    const [rotationX, rotationY, rotationZ] = rotation;
+
+    const radX = (rotationX * Math.PI) / 180; // X軸回転角度をラジアンに変換
+    const radY = (rotationY * Math.PI) / 180; // Y軸回転角度をラジアンに変換
+    const radZ = (rotationZ * Math.PI) / 180; // Z軸回転角度をラジアンに変換
+
+    // バウンディングボックスの中心を取得
+    const bbox = getBoundingBox(pathsData);
+    const centerX = bbox.centerX;
+    const centerY = bbox.centerY;
+
+    for (let i = 0; i < pathsData.length; i++) {
+        for (let j = 0; j < pathsData[i].cmd.length; j++) {
+            let cmd = pathsData[i].cmd[j];
+
+            // 各座標の初期値（座標がある場合のみ）
+            let x = cmd.x !== undefined ? cmd.x : undefined;
+            let y = cmd.y !== undefined ? cmd.y : undefined;
+            let z = 0; // 2Dデータなので z は 0
+
+            if (x !== undefined && y !== undefined) {
+                // バウンディングボックスの中心を原点に移動
+                x -= centerX;
+                y -= centerY;
+
+				// スケーリング
+                x *= scaleX;
+                y *= scaleY;
+
+                // X軸回転
+                let newY = y * Math.cos(radX) - z * Math.sin(radX);
+                let newZ = y * Math.sin(radX) + z * Math.cos(radX);
+                y = newY;
+                z = newZ;
+
+                // Y軸回転
+                let newX = x * Math.cos(radY) + z * Math.sin(radY);
+                newZ = -x * Math.sin(radY) + z * Math.cos(radY);
+                x = newX;
+                z = newZ;
+
+                // Z軸回転（2D回転と同じ）
+                newX = x * Math.cos(radZ) - y * Math.sin(radZ);
+                newY = x * Math.sin(radZ) + y * Math.cos(radZ);
+                x = newX;
+                y = newY;
+
+                // 回転後の座標を再度バウンディングボックスの中心に戻し、オフセットを適用
+                cmd.x = x + centerX + offsetX;
+                cmd.y = y + centerY + offsetY;
+            }
+
+            // 制御点も同様に処理 (x1, y1がある場合)
+            if (cmd.x1 !== undefined && cmd.y1 !== undefined) {
+                x = cmd.x1;
+                y = cmd.y1;
+                z = 0; // 2Dでは z は 0
+
+                // バウンディングボックスの中心を原点に移動
+                x -= centerX;
+                y -= centerY;
+
+				// スケーリング
+                x *= scaleX;
+                y *= scaleY;
+
+                // X軸回転
+                let newY = y * Math.cos(radX) - z * Math.sin(radX);
+                let newZ = y * Math.sin(radX) + z * Math.cos(radX);
+                y = newY;
+                z = newZ;
+
+                // Y軸回転
+                let newX = x * Math.cos(radY) + z * Math.sin(radY);
+                newZ = -x * Math.sin(radY) + z * Math.cos(radY);
+                x = newX;
+                z = newZ;
+
+                // Z軸回転
+                newX = x * Math.cos(radZ) - y * Math.sin(radZ);
+                newY = x * Math.sin(radZ) + y * Math.cos(radZ);
+                x = newX;
+                y = newY;
+
+                // 回転後の座標を再度バウンディングボックスの中心に戻し、オフセットを適用
+                cmd.x1 = x + centerX + offsetX;
+                cmd.y1 = y + centerY + offsetY;
+            }
+        }
+    }
+    return pathsData;
+}
+
+// バウンディングボックスを取得する関数
+function getBoundingBox(pathsData) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+    for (let i = 0; i < pathsData.length; i++) {
+        const path = pathsData[i];
+        for (let j = 0; j < path.cmd.length; j++) {
+            const cmd = path.cmd[j];
+
+            if (cmd.x !== undefined) {
+                minX = Math.min(minX, cmd.x);
+                maxX = Math.max(maxX, cmd.x);
+            }
+            if (cmd.y !== undefined) {
+                minY = Math.min(minY, cmd.y);
+                maxY = Math.max(maxY, cmd.y);
+            }
+            if (cmd.x1 !== undefined) {
+                minX = Math.min(minX, cmd.x1);
+                maxX = Math.max(maxX, cmd.x1);
+            }
+            if (cmd.y1 !== undefined) {
+                minY = Math.min(minY, cmd.y1);
+                maxY = Math.max(maxY, cmd.y1);
+            }
+        }
+    }
+
+    return {
+        minX,
+        minY,
+        maxX,
+        maxY,
+        centerX: (minX + maxX) / 2,
+        centerY: (minY + maxY) / 2
+    };
 }
 
 
